@@ -1,0 +1,73 @@
+[
+  {
+    "id": 1754557938847,
+    "title": "Data Ai Engineer",
+    "department": "Engineering",
+    "location": "Chennai",
+    "type": "Full-time",
+    "experience": "1-2 years",
+    "salary": "2-3 LPA",
+    "description": "Need a Perfect Candiate for AI Prompt engineering",
+    "requirements": [
+      "Python",
+      "AI",
+      "Backend"
+    ],
+    "posted": "8/7/2025"
+  },
+  {
+    "id": 1754636373160,
+    "title": "Fullstack Engineer",
+    "department": "Engineering",
+    "location": "Chennai",
+    "type": "Full-time",
+    "experience": "1+ years",
+    "salary": "2-3 LPA",
+    "description": "Need Fullstack developer who have knowledge in all domains",
+    "requirements": [
+      "AWS",
+      "Docker",
+      "Git",
+      "HTML",
+      "Java",
+      "JavaScript",
+      "MongoDB",
+      "Node.js",
+      "Python",
+      "React"
+    ],
+    "posted": "8/8/2025"
+  },
+  {
+    "id": 1754655798684,
+    "title": "File Namer",
+    "department": "Analytics",
+    "location": "Chennai",
+    "type": "Full-time",
+    "experience": "0-1 years",
+    "salary": "2-3 LPA",
+    "description": "Need a File Namer",
+    "requirements": [
+      "Azure",
+      "Adobe Creative Suite",
+      "Communication Skills",
+      "Data Analysis"
+    ],
+    "posted": "8/8/2025"
+  },
+  {
+    "id": 1754655918956,
+    "title": "FeedBack Acceptor",
+    "department": "Product",
+    "location": "Chennai",
+    "type": "Full-time",
+    "experience": "2+ years",
+    "salary": "223-344 LPA",
+    "description": "Document reader needed No need Code ",
+    "requirements": [
+      "Adobe Creative Suite",
+      "Bachelor's Degree"
+    ],
+    "posted": "8/8/2025"
+  }
+]

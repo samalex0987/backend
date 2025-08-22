@@ -1,0 +1,523 @@
+const express = require('express');
+const multer = require('multer');
+const sqlite3 = require('sqlite3').verbose();
+const fs = require('fs');
+const cors = require('cors');
+const bcrypt = require('bcrypt');
+const path = require('path');
+const nodemailer = require('nodemailer');
+
+require('dotenv').config();
+
+const app = express();
+const PORT = 5000;
+
+app.use(cors());
+app.use(express.json());
+
+// Use memory storage (no files saved on disk)
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
+// Initialize SQLite DB
+const db = new sqlite3.Database('./applications.db', (err) => {
+  if (err) return console.error(err.message);
+  console.log('Connected to SQLite database.');
+});
+
+ 
+
+// db.run(`CREATE TABLE IF NOT EXISTS users (
+//   id INTEGER PRIMARY KEY AUTOINCREMENT,
+//   name TEXT NOT NULL,
+//   email TEXT UNIQUE NOT NULL,
+//   password TEXT NOT NULL,
+//   role TEXT NOT NULL,
+//   department TEXT NOT NULL,
+//   createdAt TEXT NOT NULL
+// )`);
+
+// Create jobs table if not exists
+// db.run(`
+//   CREATE TABLE IF NOT EXISTS jobs (
+//     id INTEGER PRIMARY KEY AUTOINCREMENT,
+//     title TEXT NOT NULL,
+//     department TEXT NOT NULL,
+//     location TEXT NOT NULL,
+//     type TEXT DEFAULT 'Full-time',
+//     experience TEXT,
+//     salary TEXT,
+//     description TEXT NOT NULL,
+//     requirements TEXT, -- stored as JSON string
+//     posted TEXT -- date string
+//   )
+// `);
+// Create table if it doesn't exist
+// db.run(`
+//   CREATE TABLE IF NOT EXISTS applications (
+//     id INTEGER PRIMARY KEY AUTOINCREMENT,
+//     name TEXT,
+//     email TEXT,
+//     phone TEXT,
+//     jobTitle TEXT,
+//     resumeBase64 TEXT,
+//     resumeFilename TEXT,
+//     appliedAt TEXT
+//   )
+// `);
+
+// API route to handle job application===================================================================================
+app.post('/apply-job', upload.single('resume'), (req, res) => {
+  const { name, email, phone, jobTitle } = req.body;
+  const resumeFile = req.file;
+  const appliedAt = new Date().toISOString();
+  
+  if (!name || !email || !phone || !jobTitle || !resumeFile) {
+    return res.status(400).json({ message: 'Missing required fields.' });
+  }
+  
+  // Convert file buffer to Base64
+  const resumeBase64 = resumeFile.buffer.toString('base64');
+  const resumeFilename = resumeFile.originalname;
+  
+  // Save data in the database
+  const sql = `
+  INSERT INTO applications (name, email, phone, jobTitle, resumeBase64, resumeFilename, appliedAt)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+  `;
+  
+  db.run(sql, [name, email, phone, jobTitle, resumeBase64, resumeFilename, appliedAt], function (err) {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ message: 'Database error.' });
+    }
+    
+    res.json({ message: 'Application submitted successfully!' });
+  });
+});
+
+
+// Get all applications
+app.get('/applications', (req, res) => {
+  const sql = `SELECT id, name, email, phone, jobTitle, resumeFilename, appliedAt FROM applications`;
+
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ message: 'Failed to retrieve applications.' });
+    }
+    
+    res.json(rows);
+  });
+});
+
+
+// Get resume as base64
+// Express.js - Database la irunthu base64 data fetch pannurathu
+// Get resume as base64 from database
+app.get('/resume/:id', (req, res) => {
+  const applicationId = req.params.id;
+  
+  // Database la irunthu resumeBase64 column ah fetch pannurom
+  const sql = `SELECT resumeFilename, name, resumeBase64 FROM applications WHERE id = ?`;
+  
+  db.get(sql, [applicationId], (err, row) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ message: 'Database error.' });
+    }
+    
+    if (!row) {
+      return res.status(404).json({ message: 'Application not found.' });
+    }
+    
+    const resumeFilename = row.resumeFilename;
+    const applicantName = row.name;
+    const resumeBase64 = row.resumeBase64;
+    
+    if (!resumeBase64) {
+      return res.status(404).json({ message: 'Resume data not found.' });
+    }
+    
+    // File extension get pannurom filename la irunthu
+    const fileExtension = resumeFilename ? path.extname(resumeFilename).toLowerCase() : '.pdf';
+    
+    // MIME type set pannurom
+    let mimeType = 'application/octet-stream';
+    switch (fileExtension) {
+      case '.pdf':
+        mimeType = 'application/pdf';
+        break;
+      case '.doc':
+        mimeType = 'application/msword';
+        break;
+      case '.docx':
+        mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        break;
+      case '.txt':
+        mimeType = 'text/plain';
+        break;
+      case '.jpg':
+      case '.jpeg':
+        mimeType = 'image/jpeg';
+        break;
+      case '.png':
+        mimeType = 'image/png';
+        break;
+    }
+    
+    // Response ah JSON format la send pannurom
+    res.json({
+      success: true,
+      fileName: `${applicantName}_Resume${fileExtension}`,
+      mimeType: mimeType,
+      fileData: resumeBase64
+    });
+  });
+});
+
+// API route to handle job application===================================================================================
+
+
+// API route to handle job posts===================================================================================
+
+// Get all jobs
+app.get('/jobs', (req, res) => {
+  db.all('SELECT * FROM jobs', [], (err, rows) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to fetch jobs' });
+    }
+    // Parse requirements JSON string back to array
+    const jobs = rows.map(job => ({
+      ...job,
+      requirements: job.requirements ? JSON.parse(job.requirements) : []
+    }));
+    res.json(jobs);
+  });
+});
+
+// Add new job
+app.post('/jobs', (req, res) => {
+  const {
+    title,
+    department,
+    location,
+    type = 'Full-time',
+    experience = '',
+    salary = '',
+    description,
+    requirements = [],
+    posted = new Date().toISOString()
+  } = req.body;
+
+  if (!title || !department || !location || !description) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  const reqString = JSON.stringify(Array.isArray(requirements) ? requirements : requirements.split(',').map(r => r.trim()));
+
+  const sql = `INSERT INTO jobs 
+    (title, department, location, type, experience, salary, description, requirements, posted) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+  db.run(sql, [title, department, location, type, experience, salary, description, reqString, posted], function(err) {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to add job' });
+    }
+    res.status(201).json({ message: 'Job added successfully', jobId: this.lastID });
+  });
+});
+
+// Update existing job
+app.put('/jobs/:id', (req, res) => {
+  const jobId = req.params.id;
+  const {
+    title,
+    department,
+    location,
+    type = 'Full-time',
+    experience = '',
+    salary = '',
+    description,
+    requirements = [],
+    posted
+  } = req.body;
+
+  if (!title || !department || !location || !description) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  //crud - create/ read/ update/ delete
+  //using queries
+
+  const reqString = JSON.stringify(Array.isArray(requirements) ? requirements : requirements.split(',').map(r => r.trim()));
+
+  const sql = `
+    UPDATE jobs
+    SET title=?, department=?, location=?, type=?, experience=?, salary=?, description=?, requirements=?, posted=?
+    WHERE id=?
+  `;
+
+  db.run(sql, [title, department, location, type, experience, salary, description, reqString, posted, jobId], function(err) {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to update job' });
+    }
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    res.json({ message: 'Job updated successfully' });
+  });
+});
+
+// Delete job
+app.delete('/jobs/:id', (req, res) => {
+  const jobId = req.params.id;
+
+  const sql = `DELETE FROM jobs WHERE id = ?`;
+
+  db.run(sql, [jobId], function(err) {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to delete job' });
+    }
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    res.json({ message: 'Job deleted successfully' });
+  });
+});
+
+// Get single job by id
+app.get('/jobs/:id', (req, res) => {
+  const jobId = req.params.id;
+
+  db.get('SELECT * FROM jobs WHERE id = ?', [jobId], (err, row) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to fetch job' });
+    }
+    if (!row) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    row.requirements = row.requirements ? JSON.parse(row.requirements) : [];
+    res.json(row);
+  });
+});
+
+// API route to handle job posts===================================================================================
+
+
+// API route to handle Dashboard Stats===================================================================================
+
+app.get('/stats/total-jobs', (req, res) => {
+  db.get('SELECT COUNT(*) AS totalJobs FROM jobs', [], (err, row) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to fetch total jobs' });
+    }
+    res.json({ totalJobs: row.totalJobs });
+  });
+});
+
+
+app.get('/stats/total-applications', (req, res) => {
+  db.get('SELECT COUNT(*) AS totalApplications FROM applications', [], (err, row) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to fetch total applications' });
+    }
+    res.json({ totalApplications: row.totalApplications });
+  });
+});
+
+
+// API route to handle Dashboard Stats===================================================================================
+
+
+// API route to handle HR Login and Register===================================================================================
+
+app.post('/auth/register', async (req, res) => {
+  try {
+    const { name, email, password, role, department } = req.body;
+    
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: 'Name, email and password are required' });
+    }
+    
+    // Check if user already exists
+    db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
+      if (err) return res.status(500).json({ message: 'Database error' });
+      if (user) return res.status(400).json({ message: 'Email already registered' });
+      
+      // Hash password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Insert new user
+      const createdAt = new Date().toISOString();
+      db.run(
+        `INSERT INTO users (name, email, password, role, department, createdAt) VALUES (?, ?, ?, ?, ?, ?)`,
+        [name, email, hashedPassword, role || 'HR', department || 'Human Resources', createdAt],
+        function (err) {
+          if (err) return res.status(500).json({ message: 'Failed to register user' });
+          
+          res.status(201).json({ message: 'User registered successfully', userId: this.lastID });
+        }
+      );
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+app.post('/auth/login', (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password)
+    return res.status(400).json({ message: 'Email and password are required' });
+
+  db.get('SELECT * FROM users WHERE email = ?', [email], async (err, user) => {
+    if (err) return res.status(500).json({ message: 'Database error' });
+    if (!user) return res.status(400).json({ message: 'Invalid email or password' });
+
+    // Compare password
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) return res.status(400).json({ message: 'Invalid email or password' });
+
+    // You can create a session or JWT here; for now just send success with minimal info
+    res.json({ 
+      message: 'Login successful', 
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        department: user.department
+      }
+    });
+  });
+});
+
+// API route to handle Demo Mail===================================================================================
+
+app.post('/send-mail', async (req, res) => {
+  const { name, email, message, company, phone, subject } = req.body;
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host:'mail.sbainfo.in',
+      port: '587',
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      }
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: process.env.EMAIL_RECEIVER_FOR_ENQUIRY,
+      subject: subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; color: #333;">
+          <h2 style="color: #007BFF;">New Message from ${name}</h2>
+          <p><strong>Subject:</strong> ${subject}</p>
+          <p><strong>Message:</strong></p>
+          <p style="background-color: #f8f9fa; padding: 10px; border-left: 4px solid #007BFF;">${message}</p>
+
+          <h3>Sender Details</h3>
+          <ul>
+              <li><strong>Name:</strong> ${name}</li>
+              <li><strong>Company:</strong> ${company}</li>
+              <li><strong>Phone:</strong> ${phone}</li>
+              <li><strong>Email:</strong> ${email}</li>
+          </ul>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.status(200).json({ success: true, message: 'Email sent successfully' });
+  } catch (error) {
+    console.error('Contact email error:', error);
+    res.status(500).json({ success: false, message: 'Failed to send email' });
+  }
+});
+
+// API route to handle Demo Mail===================================================================================
+
+
+app.post('/apply-jobs', upload.single('resume'), async (req, res) => {
+  const { name, email, phone, jobTitle } = req.body;
+  const resume = req.file;
+  const appliedAt = new Date().toISOString();
+
+  if (!name || !email || !phone || !jobTitle || !resume) {
+    return res.status(400).json({ success: false, message: 'Missing fields or resume.' });
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host: 'mail.sbainfo.in',
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      }
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: process.env.EMAIL_RECEIVER_FOR_JOB,
+      subject: `New Application for ${jobTitle} - ${name}`,
+      text: `
+        Name: ${name}
+        Email: ${email}
+        Phone: ${phone}
+        Applied for: ${jobTitle}
+      `,
+      attachments: [
+        {
+          filename: resume.originalname,
+          content: resume.buffer,
+          contentType: resume.mimetype
+        }
+      ]
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    const resumeBase64 = resume.buffer.toString('base64');
+    const resumeFilename = resume.originalname;
+
+    const sql = `
+      INSERT INTO applications (name, email, phone, jobTitle, resumeBase64, resumeFilename, appliedAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.run(sql, [name, email, phone, jobTitle, resumeBase64, resumeFilename, appliedAt], function (err) {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ success: false, message: 'Server issue, please try again later.' });
+      }
+
+      return res.json({ success: true, message: 'Application submitted successfully!' });
+    });
+
+  } catch (error) {
+    console.error('Job application error:', error);
+    res.status(500).json({ success: false, message: 'Failed to send application.' });
+  }
+});
+
+
+// API route to handle HR Login and Register===================================================================================
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});

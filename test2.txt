@@ -1,0 +1,461 @@
+require('dotenv').config(); // Load .env
+
+const express = require('express');
+const nodemailer = require('nodemailer');
+const cors = require('cors');
+const multer = require('multer');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+
+// Middlewares
+app.use(cors());
+app.use(express.json());
+
+// 📂 Setup Multer for file upload
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const uploadPath = path.join(__dirname, 'uploads');
+    if (!fs.existsSync(uploadPath)) {
+      fs.mkdirSync(uploadPath);
+    }
+    cb(null, uploadPath);
+  },
+  filename: function (req, file, cb) {
+    const uniqueName = Date.now() + '-' + file.originalname;
+    cb(null, uniqueName);
+  }
+});
+const upload = multer({ storage });
+
+
+// ✉️ Contact Form - send-mail route
+// Total members applied
+// total viewed 
+// closed date and mentioned
+// show relevant resumes !important AI
+
+app.post('/send-mail', async (req, res) => {
+  const { name, email, message, company, phone, subject } = req.body;
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host:'mail.sbainfo.in',
+      port: '587',
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      }
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: process.env.EMAIL_RECEIVER_FOR_ENQUIRY,
+      subject: subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; color: #333;">
+          <h2 style="color: #007BFF;">New Message from ${name}</h2>
+          <p><strong>Subject:</strong> ${subject}</p>
+          <p><strong>Message:</strong></p>
+          <p style="background-color: #f8f9fa; padding: 10px; border-left: 4px solid #007BFF;">${message}</p>
+
+          <h3>Sender Details</h3>
+          <ul>
+              <li><strong>Name:</strong> ${name}</li>
+              <li><strong>Company:</strong> ${company}</li>
+              <li><strong>Phone:</strong> ${phone}</li>
+              <li><strong>Email:</strong> ${email}</li>
+          </ul>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.status(200).json({ success: true, message: 'Email sent successfully' });
+  } catch (error) {
+    console.error('Contact email error:', error);
+    res.status(500).json({ success: false, message: 'Failed to send email' });
+  }
+});
+
+app.post('/demo/send-mail', async (req, res) => {
+  const { name, email, message, company, phone, subject } = req.body;
+
+  try {
+    const transporter = nodemailer.createTransport({
+      host:'mail.sbainfo.in',
+      port: '587',
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      }
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: process.env.EMAIL_RECEIVER_FOR_JOB,
+      subject: subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; color: #333;">
+          <h2 style="color: #007BFF;">New Message from ${name}</h2>
+          <p><strong>Subject:</strong> ${subject}</p>
+          <p><strong>Message:</strong></p>
+          <p style="background-color: #f8f9fa; padding: 10px; border-left: 4px solid #007BFF;">${message}</p>
+ 
+          <h3>Sender Details</h3>
+          <ul>
+              <li><strong>Name:</strong> ${name}</li>
+              <li><strong>Company:</strong> ${company}</li>
+              <li><strong>Phone:</strong> ${phone}</li>
+              <li><strong>Email:</strong> ${email}</li>
+          </ul>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.status(200).json({ success: true, message: 'Email sent successfully' });
+  } catch (error) {
+    console.error('Contact email error:', error);
+    res.status(500).json({ success: false, message: 'Failed to send email' });
+  }
+});
+
+
+// 📩 Job Application Route
+app.post('/apply-job', upload.single('resume'), async (req, res) => {
+  const { name, email, phone, jobTitle } = req.body;
+  const resume = req.file;
+  
+  if (!name || !email || !phone || !jobTitle || !resume) {
+    return res.status(400).json({ success: false, message: 'Missing fields or resume.' });
+  }
+
+  const applicantsFilePath = path.join(__dirname, 'datas', 'applicants.json');
+
+  try {
+    // Read existing applicants data
+    let applicants = [];
+    if (fs.existsSync(applicantsFilePath)) {
+      const data = fs.readFileSync(applicantsFilePath, 'utf8');
+      applicants = JSON.parse(data);
+    }
+
+    // Check if email already exists
+    const existingApplicant = applicants.find(applicant => applicant.email.toLowerCase() === email.toLowerCase());
+    if (existingApplicant) {
+      // Delete the uploaded resume since we're not processing this application
+      fs.unlink(resume.path, (err) => {
+        if (err) console.error('Error deleting resume:', err);
+      });
+      
+      return res.status(409).json({ 
+        success: false, 
+        message: 'You have already applied for a position. Duplicate applications are not allowed.' 
+      });
+    }
+
+    // Convert resume to base64
+    const resumeBuffer = fs.readFileSync(resume.path);
+    const resumeBase64 = resumeBuffer.toString('base64');
+    const resumeMimeType = resume.mimetype;
+
+    const transporter = nodemailer.createTransport({
+      host: 'mail.sbainfo.in',
+      port: '587',
+      secure: false,
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      }
+    });
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: process.env.EMAIL_RECEIVER_FOR_JOB,
+      subject: `New Application for ${jobTitle} - ${name}`,
+      text: `
+        Name: ${name}
+        Email: ${email}
+        Phone: ${phone}
+        Applied for: ${jobTitle}
+      `,
+      attachments: [
+        {
+          filename: resume.originalname,
+          path: resume.path,
+        }
+      ]
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    // Create new applicant object with base64 resume
+    const newApplicant = {
+      id: Date.now(), // Simple ID generation
+      name,
+      email: email.toLowerCase(), // Store email in lowercase for consistency
+      phone,
+      jobTitle,
+      appliedAt: new Date().toISOString(),
+      status: 'waiting', // Default status: waiting, selected, rejected
+      resume: {
+        filename: resume.originalname,
+        mimeType: resumeMimeType,
+        size: resume.size,
+        data: resumeBase64
+      }
+    };
+
+    // Add new applicant to the array
+    applicants.push(newApplicant);
+
+    // Write updated data back to JSON file
+    fs.writeFileSync(applicantsFilePath, JSON.stringify(applicants, null, 2));
+
+    // Delete temporary resume file after storing in base64
+    fs.unlink(resume.path, (err) => {
+      if (err) {
+        console.error('Error deleting temporary resume:', err);
+      } else {
+        console.log('Deleted temporary resume file:', resume.path);
+      }
+    });
+
+    res.status(200).json({ 
+      success: true, 
+      message: 'Application sent successfully and details stored.',
+      applicantId: newApplicant.id
+    });
+
+  } catch (error) {
+    console.error('Job application error:', error);
+    
+    // Clean up uploaded file in case of error
+    if (resume && resume.path) {
+      fs.unlink(resume.path, (err) => {
+        if (err) console.error('Error deleting resume after error:', err);
+      });
+    }
+    
+    res.status(500).json({ success: false, message: 'Failed to send application.' });
+  }
+});
+
+
+app.get('/jobs', (req, res) => {
+  const filePath = path.join(__dirname, 'datas', 'jobs.json');
+  fs.readFile(filePath, 'utf8', (err, data) => {
+    if (err) {
+      console.error('Error reading jobs file:', err);
+      return res.status(500).json({ error: 'Unable to fetch jobs' });
+    }
+
+    try {
+      const jobs = JSON.parse(data);
+      res.json(jobs);
+    } catch (parseErr) {
+      console.error('Error parsing jobs:', parseErr);
+      res.status(500).json({ error: 'Failed to parse jobs data' });
+    }
+  });
+});
+
+
+// Helper function to read jobs from file
+const readJobsFromFile = () => {
+  const filePath = path.join(__dirname, 'jobs', 'jobs.json');
+  try {
+    const data = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(data);
+  } catch (err) {
+    console.error('Error reading jobs:', err);
+    return [];
+  }
+};
+
+// Helper function to write jobs to file
+const writeJobsToFile = (jobs) => {
+  const filePath = path.join(__dirname, 'jobs', 'jobs.json');
+  try {
+    // Ensure the jobs directory exists
+    const jobsDir = path.join(__dirname, 'jobs');
+    if (!fs.existsSync(jobsDir)) {
+      fs.mkdirSync(jobsDir, { recursive: true });
+    }
+
+    fs.writeFileSync(filePath, JSON.stringify(jobs, null, 2), 'utf8');
+    return true;
+  } catch (err) {
+    console.error('Error writing jobs:', err);
+    return false;
+  }
+};
+
+// POST - Add new job
+app.post('/jobs', (req, res) => {
+  try {
+    const jobs = readJobsFromFile();
+    const newJob = {
+      id: Date.now(), // Simple ID generation
+      title: req.body.title,
+      department: req.body.department,
+      location: req.body.location,
+      type: req.body.type || 'Full-time',
+      experience: req.body.experience || '',
+      salary: req.body.salary || '',
+      description: req.body.description,
+      requirements: Array.isArray(req.body.requirements) 
+        ? req.body.requirements 
+        : req.body.requirements?.split(',').map(req => req.trim()).filter(req => req) || [],
+      posted: req.body.posted || new Date().toLocaleDateString()
+    };
+
+    // Validate required fields
+    if (!newJob.title || !newJob.department || !newJob.location || !newJob.description) {
+      return res.status(400).json({ error: 'Missing required fields: title, department, location, description' });
+    }
+
+    jobs.push(newJob);
+    
+    if (writeJobsToFile(jobs)) {
+      res.status(201).json({ message: 'Job added successfully', job: newJob });
+    } else {
+      res.status(500).json({ error: 'Failed to save job' });
+    }
+  } catch (err) {
+    console.error('Error adding job:', err);
+    res.status(500).json({ error: 'Failed to add job' });
+  }
+});
+
+// PUT - Update existing job
+app.put('/jobs/:id', (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const jobs = readJobsFromFile();
+    const jobIndex = jobs.findIndex(job => job.id === jobId);
+
+    if (jobIndex === -1) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Update job data
+    const updatedJob = {
+      ...jobs[jobIndex], // Keep existing data
+      title: req.body.title,
+      department: req.body.department,
+      location: req.body.location,
+      type: req.body.type || jobs[jobIndex].type,
+      experience: req.body.experience || '',
+      salary: req.body.salary || '',
+      description: req.body.description,
+      requirements: Array.isArray(req.body.requirements) 
+        ? req.body.requirements 
+        : req.body.requirements?.split(',').map(req => req.trim()).filter(req => req) || [],
+      posted: req.body.posted || jobs[jobIndex].posted
+    };
+
+    // Validate required fields
+    if (!updatedJob.title || !updatedJob.department || !updatedJob.location || !updatedJob.description) {
+      return res.status(400).json({ error: 'Missing required fields: title, department, location, description' });
+    }
+
+    jobs[jobIndex] = updatedJob;
+    
+    if (writeJobsToFile(jobs)) {
+      res.json({ message: 'Job updated successfully', job: updatedJob });
+    } else {
+      res.status(500).json({ error: 'Failed to update job' });
+    }
+  } catch (err) {
+    console.error('Error updating job:', err);
+    res.status(500).json({ error: 'Failed to update job' });
+  }
+});
+
+// DELETE - Delete job
+app.delete('/jobs/:id', (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const jobs = readJobsFromFile();
+    const jobIndex = jobs.findIndex(job => job.id === jobId);
+
+    if (jobIndex === -1) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const deletedJob = jobs.splice(jobIndex, 1)[0];
+    
+    if (writeJobsToFile(jobs)) {
+      res.json({ message: 'Job deleted successfully', job: deletedJob });
+    } else {
+      res.status(500).json({ error: 'Failed to delete job' });
+    }
+  } catch (err) {
+    console.error('Error deleting job:', err);
+    res.status(500).json({ error: 'Failed to delete job' });
+  }
+});
+
+// GET - Get single job by ID (optional, for detailed view)
+app.get('/jobs/:id', (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const jobs = readJobsFromFile();
+    const job = jobs.find(job => job.id === jobId);
+
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    res.json(job);
+  } catch (err) {
+    console.error('Error fetching job:', err);
+    res.status(500).json({ error: 'Failed to fetch job' });
+  }
+});
+
+// PATCH - Partially update job (optional, for specific field updates)
+app.patch('/jobs/:id', (req, res) => {
+  try {
+    const jobId = parseInt(req.params.id);
+    const jobs = readJobsFromFile();
+    const jobIndex = jobs.findIndex(job => job.id === jobId);
+
+    if (jobIndex === -1) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Only update provided fields
+    const updatedJob = { ...jobs[jobIndex] };
+    Object.keys(req.body).forEach(key => {
+      if (req.body[key] !== undefined && req.body[key] !== null) {
+        if (key === 'requirements' && typeof req.body[key] === 'string') {
+          updatedJob[key] = req.body[key].split(',').map(req => req.trim()).filter(req => req);
+        } else {
+          updatedJob[key] = req.body[key];
+        }
+      }
+    });
+
+    jobs[jobIndex] = updatedJob;
+    
+    if (writeJobsToFile(jobs)) {
+      res.json({ message: 'Job updated successfully', job: updatedJob });
+    } else {
+      res.status(500).json({ error: 'Failed to update job' });
+    }
+  } catch (err) {
+    console.error('Error updating job:', err);
+    res.status(500).json({ error: 'Failed to update job' });
+  }
+});
+// Start Server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
+});
