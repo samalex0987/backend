@@ -67,7 +67,7 @@ const db = new sqlite3.Database('./applications.db', (err) => {
 // `);
 
 // API route to handle job application===================================================================================
-app.post('/apply-job', upload.single('resume'), (req, res) => {
+app.post('/api/apply-job', upload.single('resume'), (req, res) => {
   const { name, email, phone, jobTitle } = req.body;
   const resumeFile = req.file;
   const appliedAt = new Date().toISOString();
@@ -98,7 +98,7 @@ app.post('/apply-job', upload.single('resume'), (req, res) => {
 
 
 // Get all applications
-app.get('/applications', (req, res) => {
+app.get('/api/applications', (req, res) => {
   const sql = `SELECT id, name, email, phone, jobTitle, resumeFilename, appliedAt FROM applications`;
 
   db.all(sql, [], (err, rows) => {
@@ -115,7 +115,7 @@ app.get('/applications', (req, res) => {
 // Get resume as base64
 // Express.js - Database la irunthu base64 data fetch pannurathu
 // Get resume as base64 from database
-app.get('/resume/:id', (req, res) => {
+app.get('/api/resume/:id', (req, res) => {
   const applicationId = req.params.id;
   
   // Database la irunthu resumeBase64 column ah fetch pannurom
@@ -182,7 +182,7 @@ app.get('/resume/:id', (req, res) => {
 // API route to handle job posts===================================================================================
 
 // Get all jobs
-app.get('/jobs', (req, res) => {
+app.get('/api/jobs', (req, res) => {
   db.all('SELECT * FROM jobs', [], (err, rows) => {
     if (err) {
       console.error(err);
@@ -198,7 +198,7 @@ app.get('/jobs', (req, res) => {
 });
 
 // Add new job
-app.post('/jobs', (req, res) => {
+app.post('/api/jobs', (req, res) => {
   const {
     title,
     department,
@@ -231,7 +231,7 @@ app.post('/jobs', (req, res) => {
 });
 
 // Update existing job
-app.put('/jobs/:id', (req, res) => {
+app.put('/api/jobs/:id', (req, res) => {
   const jobId = req.params.id;
   const {
     title,
@@ -273,7 +273,7 @@ app.put('/jobs/:id', (req, res) => {
 });
 
 // Delete job
-app.delete('/jobs/:id', (req, res) => {
+app.delete('/api/jobs/:id', (req, res) => {
   const jobId = req.params.id;
 
   const sql = `DELETE FROM jobs WHERE id = ?`;
@@ -291,7 +291,7 @@ app.delete('/jobs/:id', (req, res) => {
 });
 
 // Get single job by id
-app.get('/jobs/:id', (req, res) => {
+app.get('/api/jobs/:id', (req, res) => {
   const jobId = req.params.id;
 
   db.get('SELECT * FROM jobs WHERE id = ?', [jobId], (err, row) => {
@@ -312,7 +312,7 @@ app.get('/jobs/:id', (req, res) => {
 
 // API route to handle Dashboard Stats===================================================================================
 
-app.get('/stats/total-jobs', (req, res) => {
+app.get('/api/stats/total-jobs', (req, res) => {
   db.get('SELECT COUNT(*) AS totalJobs FROM jobs', [], (err, row) => {
     if (err) {
       console.error(err);
@@ -323,7 +323,7 @@ app.get('/stats/total-jobs', (req, res) => {
 });
 
 
-app.get('/stats/total-applications', (req, res) => {
+app.get('/api/stats/total-applications', (req, res) => {
   db.get('SELECT COUNT(*) AS totalApplications FROM applications', [], (err, row) => {
     if (err) {
       console.error(err);
@@ -339,7 +339,7 @@ app.get('/stats/total-applications', (req, res) => {
 
 // API route to handle HR Login and Register===================================================================================
 
-app.post('/auth/register', async (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   try {
     const { name, email, password, role, department } = req.body;
     
@@ -373,7 +373,7 @@ app.post('/auth/register', async (req, res) => {
 });
 
 
-app.post('/auth/login', (req, res) => {
+app.post('/api/auth/login', (req, res) => {
   const { email, password } = req.body;
 
   if (!email || !password)
@@ -403,7 +403,7 @@ app.post('/auth/login', (req, res) => {
 
 // API route to handle Demo Mail===================================================================================
 
-app.post('/send-mail', async (req, res) => {
+app.post('/api/send-mail', async (req, res) => {
   const { name, email, message, company, phone, subject } = req.body;
 
   try {
@@ -450,7 +450,7 @@ app.post('/send-mail', async (req, res) => {
 // API route to handle Demo Mail===================================================================================
 
 
-app.post('/apply-jobs', upload.single('resume'), async (req, res) => {
+app.post('/api/apply-jobs', upload.single('resume'), async (req, res) => {
   const { name, email, phone, jobTitle } = req.body;
   const resume = req.file;
   const appliedAt = new Date().toISOString();
@@ -518,7 +518,7 @@ app.post('/apply-jobs', upload.single('resume'), async (req, res) => {
 // API route to handle HR Login and Register===================================================================================
 
 
-app.delete('/candiate/:id', (req, res) => {
+app.delete('/api/candiate/:id', (req, res) => {
   const candiateId = req.params.id;
 
   const sql = `DELETE FROM applications WHERE id = ?`;
