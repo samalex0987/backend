@@ -517,6 +517,25 @@ app.post('/apply-jobs', upload.single('resume'), async (req, res) => {
 
 // API route to handle HR Login and Register===================================================================================
 
+
+app.delete('/candiate/:id', (req, res) => {
+  const candiateId = req.params.id;
+
+  const sql = `DELETE FROM applications WHERE id = ?`;
+
+  db.run(sql, [candiateId], function(err) {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Failed to delete job' });
+    }
+    if (this.changes === 0) {
+      return res.status(404).json({ error: 'Not Found' });
+    }
+    res.json({ success: 'Job deleted successfully' });
+  });
+  console.log(candiateId)
+});
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
